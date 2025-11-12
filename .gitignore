@@ -1,0 +1,18 @@
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Virtual env
+.venv/
+
+# Environment files
+.env
+
+# Backups
+app.backup.py
+app.old.py
+db.backup.py
+requirements.backup.txt
+
+# IDE/test files
+test_api.http
