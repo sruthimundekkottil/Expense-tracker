@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ET - Expense Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            padding: 40px;
+            position: relative;
+            transition: background 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body.light {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 50%, #dfe4ea 100%);
+        }
+
+        body.light::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 50%, rgba(240, 245, 250, 0.4) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(230, 235, 245, 0.3) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        body.dark {
+            background: linear-gradient(135deg, #1a1f2e 0%, #252b3d 50%, #1e2433 100%);
+        }
+
+        body.dark::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            transition: color 0.3s ease;
+        }
+
+        body.light .logo {
+            color: #374151;
+        }
+
+        body.dark .logo {
+            color: #e2e8f0;
+        }
+
+        .theme-toggle {
+            position: relative;
+            width: 60px;
+            height: 32px;
+            cursor: pointer;
+            border-radius: 16px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+
+        body.light .theme-toggle {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        body.dark .theme-toggle {
+            background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .theme-toggle-slider {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        body.light .theme-toggle-slider {
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            transform: translateX(0);
+            box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
+        }
+
+        body.dark .theme-toggle-slider {
+            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%);
+            transform: translateX(28px);
+            box-shadow: 0 2px 8px rgba(226, 232, 240, 0.3);
+        }
+
+        .theme-toggle-slider::before {
+            content: '☀️';
+            position: absolute;
+            transition: opacity 0.3s ease;
+        }
+
+        body.dark .theme-toggle-slider::before {
+            content: '🌙';
+        }
+
+        .nav-container {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .nav-box {
+            backdrop-filter: blur(20px);
+            padding: 8px 12px;
+            border-radius: 16px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        body.light .nav-box {
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        body.dark .nav-box {
+            background: rgba(45, 55, 72, 0.6);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .nav-btn {
+            background: transparent;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        body.light .nav-btn {
+            color: #6b7280;
+        }
+
+        body.dark .nav-btn {
+            color: #a0aec0;
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        body.light .nav-btn:hover {
+            color: #374151;
+        }
+
+        body.dark .nav-btn:hover {
+            color: #e2e8f0;
+        }
+
+        body.light .nav-btn.active {
+            background: #2d3748;
+            color: white;
+        }
+
+        body.dark .nav-btn.active {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+        }
+
+        .search-box {
+            border: none;
+            padding: 8px 16px;
+            border-radius: 10px;
+            outline: none;
+            width: 160px;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+
+        body.light .search-box {
+            background: rgba(0, 0, 0, 0.04);
+            color: #2d3748;
+        }
+
+        body.dark .search-box {
+            background: rgba(255, 255, 255, 0.08);
+            color: #e2e8f0;
+        }
+
+        .search-box:focus {
+            width: 200px;
+        }
+
+        body.light .search-box:focus {
+            background: rgba(0, 0, 0, 0.06);
+        }
+
+        body.dark .search-box:focus {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .profile-btn {
+            backdrop-filter: blur(20px);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        body.light .profile-btn {
+            background: rgba(255, 255, 255, 0.9);
+            color: #374151;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        body.dark .profile-btn {
+            background: rgba(45, 55, 72, 0.6);
+            color: #e2e8f0;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .profile-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        body.light .profile-btn:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        body.dark .profile-btn:hover {
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .welcome-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .welcome-text {
+            font-size: 32px;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        body.light .welcome-text {
+            color: #374151;
+        }
+
+        body.dark .welcome-text {
+            color: #e2e8f0;
+        }
+
+        .stats-box {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        body.light .stat-label {
+            color: #6b7280;
+        }
+
+        body.dark .stat-label {
+            color: #a0aec0;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .stat-value.profit {
+            color: #48bb78;
+        }
+
+        .stat-value.loss {
+            color: #f56565;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .card {
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 28px;
+            transition: all 0.3s ease;
+        }
+
+        body.light .card {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        body.dark .card {
+            background: rgba(45, 55, 72, 0.5);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .balance-section {
+            padding: 24px;
+            border-radius: 18px;
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
+        }
+
+        body.light .balance-section {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #374151;
+        }
+
+        body.dark .balance-section {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: #e2e8f0;
+        }
+
+        .balance-label {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .balance-amount {
+            font-size: 40px;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        .expense-form {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-label {
+            font-size: 12px;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        body.light .form-label {
+            color: #6b7280;
+        }
+
+        body.dark .form-label {
+            color: #cbd5e0;
+        }
+
+        .form-input,
+        .form-select {
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+            border: 1.5px solid transparent;
+        }
+
+        body.light .form-input,
+        body.light .form-select {
+            background: white;
+            border-color: #e5e7eb;
+            color: #374151;
+        }
+
+        body.dark .form-input,
+        body.dark .form-select {
+            background: rgba(45, 55, 72, 0.6);
+            border-color: rgba(99, 102, 241, 0.2);
+            color: #e2e8f0;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            transform: translateY(-1px);
+        }
+
+        body.light .form-input:focus,
+        body.light .form-select:focus {
+            border-color: #d1d5db;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+        }
+
+        body.dark .form-input:focus,
+        body.dark .form-select:focus {
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        .submit-btn {
+            border: none;
+            padding: 13px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 8px;
+            color: white;
+        }
+
+        body.light .submit-btn {
+            background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+        }
+
+        body.dark .submit-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        body.light .submit-btn:hover {
+            box-shadow: 0 6px 20px rgba(45, 55, 72, 0.3);
+        }
+
+        body.dark .submit-btn:hover {
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 18px;
+            transition: color 0.3s ease;
+        }
+
+        body.light .card-title {
+            color: #374151;
+        }
+
+        body.dark .card-title {
+            color: #e2e8f0;
+        }
+
+        .transactions-list {
+            max-height: 480px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-right: 8px;
+        }
+
+        .transactions-list::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .transactions-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        body.light .transactions-list::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 10px;
+        }
+
+        body.dark .transactions-list::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.3);
+            border-radius: 10px;
+        }
+
+        .transaction-item {
+            padding: 14px 16px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid transparent;
+        }
+
+        body.light .transaction-item {
+            background: white;
+            border-color: #f9fafb;
+        }
+
+        body.dark .transaction-item {
+            background: rgba(45, 55, 72, 0.4);
+            border-color: rgba(99, 102, 241, 0.1);
+        }
+
+        .transaction-item:hover {
+            transform: translateX(5px);
+        }
+
+        body.light .transaction-item:hover {
+            border-color: #e5e7eb;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+        }
+
+        body.dark .transaction-item:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+        }
+
+        .transaction-info {
+            flex: 1;
+        }
+
+        .transaction-desc {
+            font-weight: 600;
+            margin-bottom: 3px;
+            font-size: 14px;
+            transition: color 0.3s ease;
+        }
+
+        body.light .transaction-desc {
+            color: #374151;
+        }
+
+        body.dark .transaction-desc {
+            color: #e2e8f0;
+        }
+
+        .transaction-meta {
+            font-size: 11px;
+            transition: color 0.3s ease;
+        }
+
+        body.light .transaction-meta {
+            color: #9ca3af;
+        }
+
+        body.dark .transaction-meta {
+            color: #718096;
+        }
+
+        .transaction-amount {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .transaction-amount.credit {
+            color: #48bb78;
+        }
+
+        .transaction-amount.debit {
+            color: #f56565;
+        }
+
+        .visualization-section {
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 28px;
+            transition: all 0.3s ease;
+        }
+
+        body.light .visualization-section {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        body.dark .visualization-section {
+            background: rgba(45, 55, 72, 0.5);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .viz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .viz-title {
+            font-size: 18px;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        body.light .viz-title {
+            color: #374151;
+        }
+
+        body.dark .viz-title {
+            color: #e2e8f0;
+        }
+
+        .chart-toggle {
+            display: flex;
+            gap: 8px;
+            padding: 4px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+
+        body.light .chart-toggle {
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        body.dark .chart-toggle {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .chart-toggle-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: transparent;
+        }
+
+        body.light .chart-toggle-btn {
+            color: #6b7280;
+        }
+
+        body.dark .chart-toggle-btn {
+            color: #a0aec0;
+        }
+
+        .chart-toggle-btn.active {
+            color: white;
+            transform: scale(1.05);
+        }
+
+        body.light .chart-toggle-btn.active {
+            background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+            box-shadow: 0 2px 8px rgba(45, 55, 72, 0.3);
+        }
+
+        body.dark .chart-toggle-btn.active {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+        }
+
+        .chart-container {
+            height: 300px;
+            padding: 20px;
+            border-radius: 16px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        body.light .chart-container {
+            background: white;
+        }
+
+        body.dark .chart-container {
+            background: rgba(30, 36, 51, 0.5);
+        }
+
+        .bar-chart {
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            gap: 20px;
+        }
+
+        .bar-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .bar {
+            width: 100%;
+            max-width: 60px;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        body.light .bar {
+            background: linear-gradient(180deg, #ffecd2 0%, #fcb69f 100%);
+        }
+
+        body.dark .bar {
+            background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
+        }
+
+        .bar:hover {
+            transform: translateY(-8px) scale(1.05);
+            opacity: 0.9;
+        }
+
+        body.light .bar:hover {
+            box-shadow: 0 8px 20px rgba(252, 182, 159, 0.3);
+        }
+
+        body.dark .bar:hover {
+            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.5);
+        }
+
+        .bar-label {
+            font-size: 12px;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        body.light .bar-label {
+            color: #6b7280;
+        }
+
+        body.dark .bar-label {
+            color: #a0aec0;
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        body.light .bar-value {
+            color: #374151;
+        }
+
+        body.dark .bar-value {
+            color: #e2e8f0;
+        }
+
+        .chart-hidden {
+            display: none;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .card,
+        .visualization-section {
+            animation: fadeIn 0.5s ease;
+        }
+
+        .transaction-item {
+            animation: slideIn 0.4s ease;
+        }
+    </style>
+</head>
+<body class="light">
+    <div class="container">
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo">ET - Expense Tracker</div>
+                <div class="theme-toggle" onclick="toggleTheme()">
+                    <div class="theme-toggle-slider"></div>
+                </div>
+            </div>
+            <div class="nav-container">
+                <div class="nav-box">
+                    <button class="nav-btn active">Home</button>
+                    <button class="nav-btn">Logs</button>
+                    <button class="nav-btn">Visual</button>
+                    <input type="text" class="search-box" placeholder="Search..." id="searchBox">
+                </div>
+                <a href="{{ url_for('profile') }}" class="profile-btn">profile</a>
+                <a href="{{ url_for('logout') }}" class="profile-btn">Logout</a>
+            </div>
+        </div>
+
+        <div class="welcome-section">
+            <div class="welcome-text">Welcome in, {{ username }}</div>
+            <div class="stats-box">
+                <div class="stat-item">
+                    <div class="stat-label">Monthly Profit</div>
+                    <div class="stat-value profit">₹{{ "%.2f"|format(monthly_profit) }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Monthly Loss</div>
+                    <div class="stat-value loss">₹{{ "%.2f"|format(monthly_loss) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="card">
+                <div class="balance-section">
+                    <div class="balance-label">Current Balance</div>
+                    <div class="balance-amount">₹{{ "%.2f"|format(current_balance) }}</div>
+                </div>
+
+                <form class="expense-form" method="POST" action="{{ url_for('add_transaction') }}">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Amount</label>
+                            <input type="number" name="amount" class="form-input" placeholder="Enter amount" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Type</label>
+                            <select class="form-select" name="type" required>
+                                <option value="debit">Debit</option>
+                                <option value="credit">Credit</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Description</label>
+                        <input type="text" name="description" class="form-input" placeholder="Enter description" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Date</label>
+                            <input type="date" name="date" class="form-input" id="dateInput" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Category</label>
+                            <select class="form-select" name="category" required>
+                                {% for category in categories %}
+                                <option>{{ category.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="submit-btn">Add Transaction</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Transaction History</div>
+                <div class="transactions-list" id="transactionsList">
+                    {% for transaction in transactions %}
+                    <div class="transaction-item">
+                        <div class="transaction-info">
+                            <div class="transaction-desc">{{ transaction.description }}</div>
+                            <div class="transaction-meta">{{ transaction.category_name }} • {{ transaction.transaction_date.strftime('%b %d, %Y') }}</div>
+                        </div>
+                        <div class="transaction-amount {{ 'credit' if transaction.transaction_type == 'income' else 'debit' }}">
+                            {{ '+' if transaction.transaction_type == 'income' else '-' }}₹{{ "%.2f"|format(transaction.amount) }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="visualization-section">
+            <div class="viz-header">
+                <div class="viz-title">Monthly Spending Overview</div>
+                <div class="chart-toggle">
+                    <button class="chart-toggle-btn active" onclick="showChart('bar')">Bar</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div id="barChart" class="bar-chart">
+                    {% set max_amount = category_spending|map(attribute='total')|max %}
+                    {% for cat in category_spending %}
+                    <div class="bar-wrapper">
+                        <div class="bar" style="height: {{ (cat.total / max_amount * 220) if max_amount > 0 else 0 }}px;">
+                            <div class="bar-value">₹{{ "%.1f"|format(cat.total/1000) }}k</div>
+                        </div>
+                        <div class="bar-label">{{ cat.name[:8] }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.classList.contains('light') ? 'light' : 'dark';
+            
+            if (currentTheme === 'light') {
+                body.classList.remove('light');
+                body.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                body.classList.remove('dark');
+                body.classList.add('light');
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        // Load theme preference
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.classList.remove('light', 'dark');
+        document.body.classList.add(savedTheme);
+
+        // Set today's date as default
+        document.getElementById('dateInput').valueAsDate = new Date();
+
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const transactions = document.querySelectorAll('.transaction-item');
+            
+            transactions.forEach(transaction => {
+                const desc = transaction.querySelector('.transaction-desc').textContent.toLowerCase();
+                const meta = transaction.querySelector('.transaction-meta').textContent.toLowerCase();
+                
+                if (desc.includes(searchTerm) || meta.includes(searchTerm)) {
+                    transaction.style.display = 'flex';
+                } else {
+                    transaction.style.display = 'none';
+                }
+            });
+        });
+
+        // Chart toggle (placeholder for future expansion)
+        function showChart(type) {
+            console.log('Showing chart:', type);
+        }
+
+        // Form submission animation
+        document.querySelector('.expense-form').addEventListener('submit', function(e) {
+            const btn = this.querySelector('.submit-btn');
+            btn.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+                btn.style.transform = '';
+            }, 150);
+        });
+    </script>
+</body>
+</html>

@@ -1,417 +1,278 @@
-from flask import Flask, request, jsonify
-from werkzeug.security import generate_password_hash
-from db import get_conn
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask_mysqldb import MySQL
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
+from functools import wraps
+import os
 
 app = Flask(__name__)
+app.secret_key = 'your_secret_key_here_change_in_production'
 
-def json_error(message, status=400, details=None):
-    payload = {"success": False, "error": {"message": message}}
-    if details is not None:
-        payload["error"]["details"] = details
-    return jsonify(payload), status
+# MySQL Configuration
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = ''
+app.config['MYSQL_DB'] = 'expense_tracker'
+app.config['MYSQL_CURSORCLASS'] = 'DictCursor'
 
-def run_query(query, params=None, fetchone=False, commit=False):
-    conn = get_conn()
-    try:
-        cur = conn.cursor(dictionary=True)
-        cur.execute(query, params or {})
-        data = None
-        if commit:
-            conn.commit()
+mysql = MySQL(app)
+
+# Login required decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Routes
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        cursor.close()
+        
+        if user and check_password_hash(user['password_hash'], password):
+            session['user_id'] = user['user_id']
+            session['username'] = user['username']
+            
+            # Log activity
+            cursor = mysql.connection.cursor()
+            cursor.execute("INSERT INTO activity_logs (user_id, action) VALUES (%s, %s)", 
+                         (user['user_id'], 'Login'))
+            mysql.connection.commit()
+            cursor.close()
+            
+            return redirect(url_for('dashboard'))
         else:
-            data = cur.fetchone() if fetchone else cur.fetchall()
-        last_id = cur.lastrowid
-        cur.close()
-        return data, last_id
-    finally:
-        conn.close()
+            flash('Invalid email or password', 'error')
+    
+    return render_template('login.html')
 
-def build_update_set(allowed_keys, payload):
-    fields = []
-    values = {}
-    for k in allowed_keys:
-        if k in payload:
-            fields.append(f"{k} = %({k})s")
-            values[k] = payload[k]
-    return ", ".join(fields), values
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        cursor = mysql.connection.cursor()
+        
+        # Check if user exists
+        cursor.execute("SELECT * FROM users WHERE email = %s OR username = %s", (email, username))
+        existing_user = cursor.fetchone()
+        
+        if existing_user:
+            flash('Username or email already exists', 'error')
+            cursor.close()
+            return render_template('register.html')
+        
+        # Create user
+        password_hash = generate_password_hash(password)
+        cursor.execute("INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s)",
+                      (username, email, password_hash))
+        mysql.connection.commit()
+        
+        # Get the new user
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        
+        # Create default categories
+        default_categories = [
+            ('Food & Dining', 'expense'),
+            ('Transportation', 'expense'),
+            ('Shopping', 'expense'),
+            ('Entertainment', 'expense'),
+            ('Bills & Utilities', 'expense'),
+            ('Healthcare', 'expense'),
+            ('Income', 'income'),
+            ('Other', 'expense')
+        ]
+        
+        for cat_name, cat_type in default_categories:
+            cursor.execute("INSERT INTO categories (user_id, name, type) VALUES (%s, %s, %s)",
+                         (user['user_id'], cat_name, cat_type))
+        
+        mysql.connection.commit()
+        cursor.close()
+        
+        # Auto login
+        session['user_id'] = user['user_id']
+        session['username'] = user['username']
+        
+        return redirect(url_for('dashboard'))
+    
+    return render_template('register.html')
 
-@app.errorhandler(404)
-def not_found(_):
-    return json_error("Resource not found", 404)
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    user_id = session['user_id']
+    cursor = mysql.connection.cursor()
+    
+    # Get current balance
+    cursor.execute("""
+        SELECT 
+            COALESCE(SUM(CASE WHEN c.type = 'income' THEN t.amount ELSE -t.amount END), 0) as balance
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.category_id
+        WHERE t.user_id = %s
+    """, (user_id,))
+    balance_result = cursor.fetchone()
+    current_balance = float(balance_result['balance']) if balance_result else 0
+    
+    # Get monthly profit (current month income)
+    cursor.execute("""
+        SELECT COALESCE(SUM(t.amount), 0) as monthly_profit
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.category_id
+        WHERE t.user_id = %s 
+        AND c.type = 'income'
+        AND MONTH(t.transaction_date) = MONTH(CURRENT_DATE())
+        AND YEAR(t.transaction_date) = YEAR(CURRENT_DATE())
+    """, (user_id,))
+    profit_result = cursor.fetchone()
+    monthly_profit = float(profit_result['monthly_profit']) if profit_result else 0
+    
+    # Get monthly loss (current month expenses)
+    cursor.execute("""
+        SELECT COALESCE(SUM(t.amount), 0) as monthly_loss
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.category_id
+        WHERE t.user_id = %s 
+        AND c.type = 'expense'
+        AND MONTH(t.transaction_date) = MONTH(CURRENT_DATE())
+        AND YEAR(t.transaction_date) = YEAR(CURRENT_DATE())
+    """, (user_id,))
+    loss_result = cursor.fetchone()
+    monthly_loss = float(loss_result['monthly_loss']) if loss_result else 0
+    
+    # Get recent transactions
+    cursor.execute("""
+        SELECT t.*, c.name as category_name, c.type as transaction_type
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.category_id
+        WHERE t.user_id = %s
+        ORDER BY t.transaction_date DESC
+        LIMIT 20
+    """, (user_id,))
+    transactions = cursor.fetchall()
+    
+    # Get categories
+    cursor.execute("SELECT * FROM categories WHERE user_id = %s", (user_id,))
+    categories = cursor.fetchall()
+    
+    # Get spending by category for current month
+    cursor.execute("""
+        SELECT c.name, COALESCE(SUM(t.amount), 0) as total
+        FROM categories c
+        LEFT JOIN transactions t ON c.category_id = t.category_id 
+            AND MONTH(t.transaction_date) = MONTH(CURRENT_DATE())
+            AND YEAR(t.transaction_date) = YEAR(CURRENT_DATE())
+        WHERE c.user_id = %s AND c.type = 'expense'
+        GROUP BY c.category_id, c.name
+    """, (user_id,))
+    category_spending = cursor.fetchall()
+    
+    cursor.close()
+    
+    return render_template('dashboard.html', 
+                         username=session['username'],
+                         current_balance=current_balance,
+                         monthly_profit=monthly_profit,
+                         monthly_loss=monthly_loss,
+                         transactions=transactions,
+                         categories=categories,
+                         category_spending=category_spending)
 
-@app.errorhandler(405)
-def method_not_allowed(_):
-    return json_error("Method not allowed", 405)
+@app.route('/add_transaction', methods=['POST'])
+@login_required
+def add_transaction():
+    user_id = session['user_id']
+    amount = request.form.get('amount')
+    transaction_type = request.form.get('type')
+    description = request.form.get('description')
+    date = request.form.get('date')
+    category_name = request.form.get('category')
+    
+    cursor = mysql.connection.cursor()
+    
+    # Get category_id
+    cursor.execute("SELECT category_id FROM categories WHERE user_id = %s AND name = %s", 
+                  (user_id, category_name))
+    category = cursor.fetchone()
+    
+    if category:
+        cursor.execute("""
+            INSERT INTO transactions (user_id, category_id, amount, description, transaction_date)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (user_id, category['category_id'], amount, description, date))
+        mysql.connection.commit()
+        
+        # Log activity
+        cursor.execute("INSERT INTO activity_logs (user_id, action) VALUES (%s, %s)",
+                     (user_id, f'Added transaction: {description}'))
+        mysql.connection.commit()
+    
+    cursor.close()
+    return redirect(url_for('dashboard'))
 
-@app.errorhandler(500)
-def internal_error(e):
-    return json_error("Internal server error", 500, str(e))
-
-@app.get("/users")
-def list_users():
-    rows, _ = run_query("SELECT user_id, username, email, created_at FROM users ORDER BY user_id DESC")
-    return jsonify({"success": True, "data": rows})
-
-@app.get("/users/<int:user_id>")
-def get_user(user_id):
-    row, _ = run_query(
-        "SELECT user_id, username, email, created_at FROM users WHERE user_id=%(user_id)s",
-        {"user_id": user_id}, fetchone=True
-    )
-    if not row:
-        return json_error("User not found", 404)
-    return jsonify({"success": True, "data": row})
-
-@app.post("/users")
-def create_user():
-    data = request.get_json(silent=True) or {}
-    username = data.get("username")
-    email = data.get("email")
-    password = data.get("password") or data.get("password_hash")
-    if not all([username, email, password]):
-        return json_error("Missing required fields: username, email, password")
-    password_hash = data.get("password_hash") or generate_password_hash(password)
-    try:
-        _, last_id = run_query(
-            "INSERT INTO users (username, email, password_hash) VALUES (%(username)s, %(email)s, %(password_hash)s)",
-            {"username": username, "email": email, "password_hash": password_hash},
-            commit=True
-        )
-    except Exception as e:
-        return json_error("Failed to create user", 400, str(e))
-    row, _ = run_query("SELECT user_id, username, email, created_at FROM users WHERE user_id=%(id)s", {"id": last_id}, fetchone=True)
-    return jsonify({"success": True, "data": row}), 201
-
-@app.put("/users/<int:user_id>")
-def update_user(user_id):
-    data = request.get_json(silent=True) or {}
-    if "password" in data and "password_hash" not in data:
-        data["password_hash"] = generate_password_hash(data["password"])
-    set_clause, values = build_update_set(["username", "email", "password_hash"], data)
-    if not set_clause:
-        return json_error("No valid fields to update")
-    values["user_id"] = user_id
-    try:
-        _, _ = run_query(f"UPDATE users SET {set_clause} WHERE user_id=%(user_id)s", values, commit=True)
-    except Exception as e:
-        return json_error("Failed to update user", 400, str(e))
-    return get_user(user_id)
-
-@app.delete("/users/<int:user_id>")
-def delete_user(user_id):
-    _, _ = run_query("DELETE FROM users WHERE user_id=%(user_id)s", {"user_id": user_id}, commit=True)
-    return jsonify({"success": True, "data": {"deleted_id": user_id}})
-
-@app.get("/admins")
-def list_admins():
-    rows, _ = run_query("SELECT admin_id, username FROM admin ORDER BY admin_id DESC")
-    return jsonify({"success": True, "data": rows})
-
-@app.get("/admins/<int:admin_id>")
-def get_admin(admin_id):
-    row, _ = run_query("SELECT admin_id, username FROM admin WHERE admin_id=%(id)s", {"id": admin_id}, fetchone=True)
-    if not row:
-        return json_error("Admin not found", 404)
-    return jsonify({"success": True, "data": row})
-
-@app.post("/admins")
-def create_admin():
-    data = request.get_json(silent=True) or {}
-    username = data.get("username")
-    password = data.get("password") or data.get("password_hash")
-    if not all([username, password]):
-        return json_error("Missing required fields: username, password")
-    password_hash = data.get("password_hash") or generate_password_hash(password)
-    try:
-        _, last_id = run_query(
-            "INSERT INTO admin (username, password_hash) VALUES (%(username)s, %(password_hash)s)",
-            {"username": username, "password_hash": password_hash},
-            commit=True
-        )
-    except Exception as e:
-        return json_error("Failed to create admin", 400, str(e))
-    row, _ = run_query("SELECT admin_id, username FROM admin WHERE admin_id=%(id)s", {"id": last_id}, fetchone=True)
-    return jsonify({"success": True, "data": row}), 201
-
-@app.put("/admins/<int:admin_id>")
-def update_admin(admin_id):
-    data = request.get_json(silent=True) or {}
-    if "password" in data and "password_hash" not in data:
-        data["password_hash"] = generate_password_hash(data["password"])
-    set_clause, values = build_update_set(["username", "password_hash"], data)
-    if not set_clause:
-        return json_error("No valid fields to update")
-    values["admin_id"] = admin_id
-    try:
-        _, _ = run_query(f"UPDATE admin SET {set_clause} WHERE admin_id=%(admin_id)s", values, commit=True)
-    except Exception as e:
-        return json_error("Failed to update admin", 400, str(e))
-    return get_admin(admin_id)
-
-@app.delete("/admins/<int:admin_id>")
-def delete_admin(admin_id):
-    _, _ = run_query("DELETE FROM admin WHERE admin_id=%(id)s", {"id": admin_id}, commit=True)
-    return jsonify({"success": True, "data": {"deleted_id": admin_id}})
-
-@app.get("/categories")
-def list_categories():
-    user_id = request.args.get("user_id", type=int)
-    if user_id:
-        rows, _ = run_query(
-            "SELECT category_id, user_id, name, type FROM categories WHERE user_id=%(user_id)s ORDER BY category_id DESC",
-            {"user_id": user_id}
-        )
-    else:
-        rows, _ = run_query("SELECT category_id, user_id, name, type FROM categories ORDER BY category_id DESC")
-    return jsonify({"success": True, "data": rows})
-
-@app.get("/categories/<int:category_id>")
-def get_category(category_id):
-    row, _ = run_query(
-        "SELECT category_id, user_id, name, type FROM categories WHERE category_id=%(id)s",
-        {"id": category_id}, fetchone=True
-    )
-    if not row:
-        return json_error("Category not found", 404)
-    return jsonify({"success": True, "data": row})
-
-@app.post("/categories")
-def create_category():
-    data = request.get_json(silent=True) or {}
-    user_id = data.get("user_id")
-    name = data.get("name")
-    type_ = data.get("type")
-    if not all([user_id, name, type_]) or type_ not in ("expense", "income"):
-        return json_error("Missing required fields or invalid type. type must be 'expense' or 'income'")
-    try:
-        _, last_id = run_query(
-            "INSERT INTO categories (user_id, name, type) VALUES (%(user_id)s, %(name)s, %(type)s)",
-            {"user_id": user_id, "name": name, "type": type_},
-            commit=True
-        )
-    except Exception as e:
-        return json_error("Failed to create category", 400, str(e))
-    return get_category(last_id)
-
-@app.put("/categories/<int:category_id>")
-def update_category(category_id):
-    data = request.get_json(silent=True) or {}
-    if "type" in data and data["type"] not in ("expense", "income"):
-        return json_error("Invalid type. Must be 'expense' or 'income'")
-    set_clause, values = build_update_set(["user_id", "name", "type"], data)
-    if not set_clause:
-        return json_error("No valid fields to update")
-    values["category_id"] = category_id
-    try:
-        _, _ = run_query(f"UPDATE categories SET {set_clause} WHERE category_id=%(category_id)s", values, commit=True)
-    except Exception as e:
-        return json_error("Failed to update category", 400, str(e))
-    return get_category(category_id)
-
-@app.delete("/categories/<int:category_id>")
-def delete_category(category_id):
-    _, _ = run_query("DELETE FROM categories WHERE category_id=%(id)s", {"id": category_id}, commit=True)
-    return jsonify({"success": True, "data": {"deleted_id": category_id}})
-
-@app.get("/transactions")
-def list_transactions():
-    params = {}
-    clauses = []
-    for key in ("user_id", "category_id"):
-        v = request.args.get(key, type=int)
-        if v is not None:
-            clauses.append(f"{key}=%({key})s")
-            params[key] = v
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows, _ = run_query(
-        f"""SELECT transaction_id, user_id, category_id, amount, description, transaction_date
-            FROM transactions {where} ORDER BY transaction_date DESC, transaction_id DESC""",
-        params or None
-    )
-    return jsonify({"success": True, "data": rows})
-
-@app.get("/transactions/<int:transaction_id>")
-def get_transaction(transaction_id):
-    row, _ = run_query(
-        "SELECT transaction_id, user_id, category_id, amount, description, transaction_date FROM transactions WHERE transaction_id=%(id)s",
-        {"id": transaction_id}, fetchone=True
-    )
-    if not row:
-        return json_error("Transaction not found", 404)
-    return jsonify({"success": True, "data": row})
-
-@app.post("/transactions")
-def create_transaction():
-    data = request.get_json(silent=True) or {}
-    required = ["user_id", "amount", "transaction_date"]
-    if not all(k in data for k in required):
-        return json_error("Missing required fields: user_id, amount, transaction_date")
-    try:
-        _, last_id = run_query(
-            """INSERT INTO transactions (user_id, category_id, amount, description, transaction_date)
-               VALUES (%(user_id)s, %(category_id)s, %(amount)s, %(description)s, %(transaction_date)s)""",
-            {
-                "user_id": data.get("user_id"),
-                "category_id": data.get("category_id"),
-                "amount": data.get("amount"),
-                "description": data.get("description"),
-                "transaction_date": data.get("transaction_date"),
-            },
-            commit=True
-        )
-    except Exception as e:
-        return json_error("Failed to create transaction", 400, str(e))
-    return get_transaction(last_id)
-
-@app.put("/transactions/<int:transaction_id>")
-def update_transaction(transaction_id):
-    data = request.get_json(silent=True) or {}
-    set_clause, values = build_update_set(
-        ["user_id", "category_id", "amount", "description", "transaction_date"], data
-    )
-    if not set_clause:
-        return json_error("No valid fields to update")
-    values["transaction_id"] = transaction_id
-    try:
-        _, _ = run_query(f"UPDATE transactions SET {set_clause} WHERE transaction_id=%(transaction_id)s", values, commit=True)
-    except Exception as e:
-        return json_error("Failed to update transaction", 400, str(e))
-    return get_transaction(transaction_id)
-
-@app.delete("/transactions/<int:transaction_id>")
+@app.route('/delete_transaction/<int:transaction_id>', methods=['POST'])
+@login_required
 def delete_transaction(transaction_id):
-    _, _ = run_query("DELETE FROM transactions WHERE transaction_id=%(id)s", {"id": transaction_id}, commit=True)
-    return jsonify({"success": True, "data": {"deleted_id": transaction_id}})
+    user_id = session['user_id']
+    cursor = mysql.connection.cursor()
+    
+    cursor.execute("DELETE FROM transactions WHERE transaction_id = %s AND user_id = %s",
+                  (transaction_id, user_id))
+    mysql.connection.commit()
+    cursor.close()
+    
+    return jsonify({'success': True})
 
-@app.get("/budgets")
-def list_budgets():
-    params, clauses = {}, []
-    for key in ("user_id", "category_id", "month_year"):
-        v = request.args.get(key)
-        if v is not None:
-            clauses.append(f"{key}=%({key})s")
-            params[key] = v if key != "category_id" else int(v)
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows, _ = run_query(
-        f"""SELECT budget_id, user_id, category_id, limit_amount, month_year
-            FROM budgets {where} ORDER BY budget_id DESC""",
-        params or None
-    )
-    return jsonify({"success": True, "data": rows})
+@app.route('/logout')
+def logout():
+    if 'user_id' in session:
+        cursor = mysql.connection.cursor()
+        cursor.execute("INSERT INTO activity_logs (user_id, action) VALUES (%s, %s)",
+                     (session['user_id'], 'Logout'))
+        mysql.connection.commit()
+        cursor.close()
+    
+    session.clear()
+    return redirect(url_for('login'))
 
-@app.get("/budgets/<int:budget_id>")
-def get_budget(budget_id):
-    row, _ = run_query(
-        "SELECT budget_id, user_id, category_id, limit_amount, month_year FROM budgets WHERE budget_id=%(id)s",
-        {"id": budget_id}, fetchone=True
-    )
-    if not row:
-        return json_error("Budget not found", 404)
-    return jsonify({"success": True, "data": row})
+@app.route('/profile')
+@login_required
+def profile():
+    user_id = session['user_id']
+    cursor = mysql.connection.cursor()
+    
+    cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+    
+    cursor.execute("""
+        SELECT * FROM activity_logs 
+        WHERE user_id = %s 
+        ORDER BY log_time DESC 
+        LIMIT 10
+    """, (user_id,))
+    logs = cursor.fetchall()
+    
+    cursor.close()
+    return render_template('profile.html', user=user, logs=logs)
 
-@app.post("/budgets")
-def create_budget():
-    data = request.get_json(silent=True) or {}
-    if "user_id" not in data:
-        return json_error("Missing required field: user_id")
-    try:
-        _, last_id = run_query(
-            """INSERT INTO budgets (user_id, category_id, limit_amount, month_year)
-               VALUES (%(user_id)s, %(category_id)s, %(limit_amount)s, %(month_year)s)""",
-            {
-                "user_id": data.get("user_id"),
-                "category_id": data.get("category_id"),
-                "limit_amount": data.get("limit_amount"),
-                "month_year": data.get("month_year"),
-            },
-            commit=True
-        )
-    except Exception as e:
-        return json_error("Failed to create budget", 400, str(e))
-    return get_budget(last_id)
-
-@app.put("/budgets/<int:budget_id>")
-def update_budget(budget_id):
-    data = request.get_json(silent=True) or {}
-    set_clause, values = build_update_set(
-        ["user_id", "category_id", "limit_amount", "month_year"], data
-    )
-    if not set_clause:
-        return json_error("No valid fields to update")
-    values["budget_id"] = budget_id
-    try:
-        _, _ = run_query(f"UPDATE budgets SET {set_clause} WHERE budget_id=%(budget_id)s", values, commit=True)
-    except Exception as e:
-        return json_error("Failed to update budget", 400, str(e))
-    return get_budget(budget_id)
-
-@app.delete("/budgets/<int:budget_id>")
-def delete_budget(budget_id):
-    _, _ = run_query("DELETE FROM budgets WHERE budget_id=%(id)s", {"id": budget_id}, commit=True)
-    return jsonify({"success": True, "data": {"deleted_id": budget_id}})
-
-@app.get("/activity_logs")
-def list_logs():
-    params, clauses = {}, []
-    user_id = request.args.get("user_id", type=int)
-    if user_id is not None:
-        clauses.append("user_id=%(user_id)s")
-        params["user_id"] = user_id
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows, _ = run_query(
-        f"SELECT log_id, user_id, action, log_time FROM activity_logs {where} ORDER BY log_time DESC, log_id DESC",
-        params or None
-    )
-    return jsonify({"success": True, "data": rows})
-
-@app.get("/activity_logs/<int:log_id>")
-def get_log(log_id):
-    row, _ = run_query(
-        "SELECT log_id, user_id, action, log_time FROM activity_logs WHERE log_id=%(id)s",
-        {"id": log_id}, fetchone=True
-    )
-    if not row:
-        return json_error("Activity log not found", 404)
-    return jsonify({"success": True, "data": row})
-
-@app.post("/activity_logs")
-def create_log():
-    data = request.get_json(silent=True) or {}
-    try:
-        _, last_id = run_query(
-            "INSERT INTO activity_logs (user_id, action) VALUES (%(user_id)s, %(action)s)",
-            {"user_id": data.get("user_id"), "action": data.get("action")},
-            commit=True
-        )
-    except Exception as e:
-        return json_error("Failed to create activity log", 400, str(e))
-    return get_log(last_id)
-
-@app.put("/activity_logs/<int:log_id>")
-def update_log(log_id):
-    data = request.get_json(silent=True) or {}
-    set_clause, values = build_update_set(["user_id", "action"], data)
-    if not set_clause:
-        return json_error("No valid fields to update")
-    values["log_id"] = log_id
-    try:
-        _, _ = run_query(f"UPDATE activity_logs SET {set_clause} WHERE log_id=%(log_id)s", values, commit=True)
-    except Exception as e:
-        return json_error("Failed to update activity log", 400, str(e))
-    return get_log(log_id)
-
-@app.delete("/activity_logs/<int:log_id>")
-def delete_log(log_id):
-    _, _ = run_query("DELETE FROM activity_logs WHERE log_id=%(id)s", {"id": log_id}, commit=True)
-    return jsonify({"success": True, "data": {"deleted_id": log_id}})
-
-@app.get("/health")
-def health():
-    try:
-        _, _ = run_query("SELECT 1")
-        return jsonify({"success": True, "status": "ok"})
-    except Exception as e:
-        return json_error("DB connection failed", 500, str(e))
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+if __name__ == '__main__':
+    app.run(debug=True)
