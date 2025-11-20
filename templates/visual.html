@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Analytics - ET</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            padding: 40px;
+            transition: background 0.5s ease;
+        }
+
+        body.light {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 50%, #dfe4ea 100%);
+        }
+
+        body.dark {
+            background: linear-gradient(135deg, #1a1f2e 0%, #252b3d 50%, #1e2433 100%);
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        body.light .logo { color: #374151; }
+        body.dark .logo { color: #e2e8f0; }
+
+        .theme-toggle {
+            width: 60px;
+            height: 32px;
+            cursor: pointer;
+            border-radius: 16px;
+            position: relative;
+        }
+
+        body.light .theme-toggle {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+        }
+
+        body.dark .theme-toggle {
+            background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
+        }
+
+        .theme-toggle-slider {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            transition: all 0.4s ease;
+        }
+
+        body.light .theme-toggle-slider {
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            transform: translateX(0);
+        }
+
+        body.dark .theme-toggle-slider {
+            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%);
+            transform: translateX(28px);
+        }
+
+        .theme-toggle-slider::before {
+            content: '☀️';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        body.dark .theme-toggle-slider::before {
+            content: '🌙';
+        }
+
+        .nav-container {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-box {
+            backdrop-filter: blur(20px);
+            padding: 8px 12px;
+            border-radius: 16px;
+            display: flex;
+            gap: 8px;
+        }
+
+        body.light .nav-box {
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        body.dark .nav-box {
+            background: rgba(45, 55, 72, 0.6);
+        }
+
+        .nav-btn {
+            background: transparent;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        body.light .nav-btn { color: #6b7280; }
+        body.dark .nav-btn { color: #a0aec0; }
+
+        body.light .nav-btn.active {
+            background: #2d3748;
+            color: white;
+        }
+
+        body.dark .nav-btn.active {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+        }
+
+        .profile-btn {
+            backdrop-filter: blur(20px);
+            padding: 10px 20px;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        body.light .profile-btn {
+            background: rgba(255, 255, 255, 0.9);
+            color: #374151;
+        }
+
+        body.dark .profile-btn {
+            background: rgba(45, 55, 72, 0.6);
+            color: #e2e8f0;
+        }
+
+        .page-title {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        body.light .page-title { color: #374151; }
+        body.dark .page-title { color: #e2e8f0; }
+
+        .page-subtitle {
+            font-size: 16px;
+            margin-bottom: 35px;
+        }
+
+        body.light .page-subtitle { color: #6b7280; }
+        body.dark .page-subtitle { color: #a0aec0; }
+
+        .charts-grid {
+            display: grid;
+            gap: 25px;
+        }
+
+        .chart-card {
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 32px;
+        }
+
+        body.light .chart-card {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        body.dark .chart-card {
+            background: rgba(45, 55, 72, 0.5);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .chart-card.wide {
+            grid-column: span 2;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .chart-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        body.light .chart-title { color: #374151; }
+        body.dark .chart-title { color: #e2e8f0; }
+
+        .chart-info {
+            font-size: 13px;
+            padding: 6px 12px;
+            border-radius: 8px;
+        }
+
+        body.light .chart-info {
+            background: rgba(99, 102, 241, 0.1);
+            color: #6366f1;
+        }
+
+        body.dark .chart-info {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 350px;
+        }
+
+        .chart-container.tall {
+            height: 450px;
+        }
+
+        @media (min-width: 1024px) {
+            .charts-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .chart-card {
+            animation: slideUp 0.5s ease;
+        }
+    </style>
+</head>
+<body class="light">
+    <div class="container">
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo">ET - Expense Tracker</div>
+                <div class="theme-toggle" onclick="toggleTheme()">
+                    <div class="theme-toggle-slider"></div>
+                </div>
+            </div>
+            <div class="nav-container">
+                <div class="nav-box">
+                    <a href="{{ url_for('dashboard') }}" class="nav-btn">Home</a>
+                    <a href="{{ url_for('insights') }}" class="nav-btn">ET-AI</a>
+                    <a href="{{ url_for('logs') }}" class="nav-btn">Logs</a>
+                    <a href="{{ url_for('visual') }}" class="nav-btn active">Visual</a>
+                </div>
+                <a href="{{ url_for('profile') }}" class="profile-btn">Profile</a>
+                <a href="{{ url_for('logout') }}" class="profile-btn">Logout</a>
+            </div>
+        </div>
+
+        <h1 class="page-title">📊 Visual Analytics</h1>
+        <p class="page-subtitle">Visualize your spending patterns with interactive charts</p>
+
+        <div class="charts-grid">
+            <!-- Category Pie Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h2 class="chart-title">Spending by Category</h2>
+                    <span class="chart-info">Current Month</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="categoryPieChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Monthly Trend Line Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h2 class="chart-title">Monthly Trend</h2>
+                    <span class="chart-info">Last 6 Months</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="trendLineChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Income vs Expense Bar Chart -->
+            <div class="chart-card wide">
+                <div class="chart-header">
+                    <h2 class="chart-title">Income vs Expenses</h2>
+                    <span class="chart-info">Last 6 Months</span>
+                </div>
+                <div class="chart-container tall">
+                    <canvas id="incomeExpenseChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Daily Spending Line Chart -->
+            <div class="chart-card wide">
+                <div class="chart-header">
+                    <h2 class="chart-title">Daily Spending Pattern</h2>
+                    <span class="chart-info">Current Month</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="dailySpendingChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme Management
+        function toggleTheme() {
+            document.body.classList.toggle('light');
+            document.body.classList.toggle('dark');
+            const theme = document.body.classList.contains('dark') ? 'dark' : 'light';
+            localStorage.setItem('theme', theme);
+            updateChartThemes();
+        }
+
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.classList.add(savedTheme);
+
+        // Chart color scheme based on theme
+        function getChartColors() {
+            const isDark = document.body.classList.contains('dark');
+            return {
+                text: isDark ? '#e2e8f0' : '#374151',
+                grid: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                colors: [
+                    '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b',
+                    '#10b981', '#3b82f6', '#a78bfa', '#f97316'
+                ]
+            };
+        }
+
+        // Data from backend
+        const categoryData = {{ category_spending|tojson }};
+        const monthlyData = {{ monthly_data|tojson }};
+        const dailyData = {{ daily_spending|tojson }};
+
+        let charts = {};
+
+        // 1. Category Pie Chart
+        function createPieChart() {
+            const colors = getChartColors();
+            const ctx = document.getElementById('categoryPieChart');
+            
+            if (charts.pie) charts.pie.destroy();
+            
+            charts.pie = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: categoryData.map(c => c.name),
+                    datasets: [{
+                        data: categoryData.map(c => c.total),
+                        backgroundColor: colors.colors,
+                        borderWidth: 2,
+                        borderColor: document.body.classList.contains('dark') ? '#1e2433' : '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: colors.text,
+                                font: { size: 12, family: 'Inter' },
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ₹${value.toFixed(2)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. Monthly Trend Line Chart
+        function createTrendChart() {
+            const colors = getChartColors();
+            const ctx = document.getElementById('trendLineChart');
+            
+            if (charts.trend) charts.trend.destroy();
+            
+            charts.trend = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: monthlyData.map(m => m.month),
+                    datasets: [{
+                        label: 'Total Spending',
+                        data: monthlyData.map(m => m.expense),
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#8b5cf6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: colors.text,
+                                font: { size: 13, family: 'Inter' }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `₹${context.parsed.y.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: colors.text,
+                                callback: (value) => '₹' + value
+                            },
+                            grid: { color: colors.grid }
+                        },
+                        x: {
+                            ticks: { color: colors.text },
+                            grid: { color: colors.grid }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 3. Income vs Expense Bar Chart
+        function createIncomeExpenseChart() {
+            const colors = getChartColors();
+            const ctx = document.getElementById('incomeExpenseChart');
+            
+            if (charts.incomeExpense) charts.incomeExpense.destroy();
+            
+            charts.incomeExpense = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: monthlyData.map(m => m.month),
+                    datasets: [
+                        {
+                            label: 'Income',
+                            data: monthlyData.map(m => m.income),
+                            backgroundColor: 'rgba(72, 187, 120, 0.8)',
+                            borderColor: '#48bb78',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Expenses',
+                            data: monthlyData.map(m => m.expense),
+                            backgroundColor: 'rgba(245, 101, 101, 0.8)',
+                            borderColor: '#f56565',
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: colors.text,
+                                font: { size: 13, family: 'Inter' }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ₹${context.parsed.y.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: colors.text,
+                                callback: (value) => '₹' + value
+                            },
+                            grid: { color: colors.grid }
+                        },
+                        x: {
+                            ticks: { color: colors.text },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 4. Daily Spending Chart
+        function createDailyChart() {
+            const colors = getChartColors();
+            const ctx = document.getElementById('dailySpendingChart');
+            
+            if (charts.daily) charts.daily.destroy();
+            
+            charts.daily = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dailyData.map(d => d.day),
+                    datasets: [{
+                        label: 'Daily Spending',
+                        data: dailyData.map(d => d.amount),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#f59e0b'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: colors.text,
+                                font: { size: 13, family: 'Inter' }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `₹${context.parsed.y.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: colors.text,
+                                callback: (value) => '₹' + value
+                            },
+                            grid: { color: colors.grid }
+                        },
+                        x: {
+                            ticks: {
+                                color: colors.text,
+                                maxTicksLimit: 15
+                            },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChartThemes() {
+            createPieChart();
+            createTrendChart();
+            createIncomeExpenseChart();
+            createDailyChart();
+        }
+
+        // Initialize all charts
+        createPieChart();
+        createTrendChart();
+        createIncomeExpenseChart();
+        createDailyChart();
+    </script>
+</body>
+</html>
